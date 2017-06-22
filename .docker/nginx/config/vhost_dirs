@@ -1,0 +1,7 @@
+location = / {
+    try_files @site @site;
+}
+
+location / {
+    try_files $uri $uri/ @site;
+}

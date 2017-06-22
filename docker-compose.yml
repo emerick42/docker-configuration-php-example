@@ -1,0 +1,101 @@
+version: '2'
+
+services:
+    # Our custom mysql container (by default, a volume containing data is
+    # mounted, so it's not reset when recreating the container)
+    db:
+        # You can use a private registry instead of a build to shorten
+        # installation (we use it for all our images)
+        # image: my.docker.registry/my-project/mysql-dev
+        build: ./.docker/mysql
+        ports:
+            - "3306:3306"
+        networks:
+            backend:
+                aliases:
+                    - mysqldb
+        environment:
+            MYSQL_ROOT_PASSWORD: root
+    # A simple redis container
+    redis:
+        # Smaller image, as we don't need to debug anything inside this one
+        image: redis:alpine
+        networks:
+            backend:
+                aliases:
+                    - redis
+    # Our custom php-fpm container
+    php:
+        build: ./.docker/php
+        networks:
+            frontend:
+                aliases:
+                    - php
+            backend: ~
+        # Share project sources inside the container (The :cached mount option
+        # let us have decent perfs with Docker for Mac, only available since
+        # 17.0.4 Edge)
+        # The 3 last volumes are created to prevent synchronizing these folders
+        volumes:
+            - .:/var/www/my_project:cached
+            - /var/www/my_project/.git
+            - /var/www/my_project/.docker
+            - /var/www/my_project/.vagrant
+    # Our custom workers container. It's different from the php-fpm, as the
+    # main process is supervisor and not php-fpm
+    workers:
+        build: ./.docker/workers
+        networks:
+            - backend
+        volumes_from:
+            - php
+    # Our custom container used to build JS files (with npm, grunt)
+    node:
+        build: ./.docker/node
+        volumes_from:
+            - php
+        tty: true
+    # Our custom nginx container
+    nginx:
+        build: ./.docker/nginx
+        # We don't have many projects in parallel, so we can fix the port on the
+        # host machine (but it's not mandatory)
+        ports:
+            - 80:80
+        networks:
+            frontend:
+                # We used many aliases so that functional tests launched from
+                # the php container can access the web server
+                aliases:
+                    - nginx
+                    - dev.my-project.com
+                    - dev.api.my-project.com
+        volumes_from:
+            - php
+    # A simple blackfire container
+    blackfire:
+        image: blackfire/blackfire
+        # This container must be part of both networks so it can access the web
+        # server and be available for the php container
+        networks:
+            backend:
+                aliases:
+                    - blackfire
+            frontend: ~
+        # We don't mind setting tokens here because this docker-compose is only
+        # for dev environment
+        environment:
+            BLACKFIRE_SERVER_ID: server_id
+            BLACKFIRE_SERVER_TOKEN: server_token
+            BLACKFIRE_CLIENT_ID: client_id
+            BLACKFIRE_CLIENT_TOKEN: client_token
+
+# We use two networks because it's fancy (and means that our container
+# architecture may be closer to be ready for prod)
+networks:
+    # The frontend network includes: php, nginx, blackfire
+    frontend:
+        driver: bridge
+    # The backend network includes: db, redis, workers, blackfire
+    backend:
+        driver: bridge

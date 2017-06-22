@@ -1,0 +1,22 @@
+index index.php;
+
+location ~* \.php$ {
+    fastcgi_index   index.php;
+    fastcgi_pass    php-upstream;
+    fastcgi_read_timeout 180;
+    include         fastcgi_params;
+}
+
+location @site {
+    fastcgi_pass    php-upstream;
+    fastcgi_read_timeout 180;
+    include         fastcgi_params;
+    fastcgi_param   SCRIPT_FILENAME    $realpath_root/index.php;
+    fastcgi_param   SCRIPT_NAME        index.php;
+}
+
+location ~ /\.ht {
+    access_log off;
+    log_not_found off;
+    deny all;
+}
